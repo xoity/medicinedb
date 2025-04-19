@@ -18,11 +18,19 @@ def read_query(request: QueryRequest):
     """Endpoint to execute SELECT queries on the SQLite database."""
     try:
         conn = sqlite3.connect(db_path)
+        # Set row_factory to return dictionary-like rows
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(request.query)
         results = cursor.fetchall()
+        
+        # Convert results to a list of dictionaries
+        formatted_results = []
+        for row in results:
+            formatted_results.append({key: row[key] for key in row.keys()})
+        
         conn.close()
-        return {"results": results}
+        return {"results": formatted_results}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

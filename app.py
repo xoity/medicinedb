@@ -3,6 +3,7 @@ import os
 import asyncio
 import json
 from datetime import datetime
+import sqlite3
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -128,29 +129,41 @@ async def search_medicine_info(medicine_name):
     result = await agent.run()
 
     if result:
-        # Extract the required fields from the result
-        generic_name = result.get("generic_name", "N/A")
-        brand_names = result.get("brand_names", "N/A")
-        dosage_forms = result.get("dosage_forms", "N/A")
-        drug_class = result.get("drug_class", "N/A")
-
+        logger.info(f"Agent returned results: {result}")
+        
         # Create a new Medicine object
         today = datetime.now().strftime("%Y-%m-%d")
+        
+        # Default values for required fields
+        name = result.get("name", medicine_name)
+        brand = result.get("brand", "N/A") 
+        category = result.get("category", "N/A")
+        dosage = result.get("dosage", "N/A")
+        
+        # Create medicine object with all required fields
         medicine = Medicine(
-            name=medicine_name,
-            brand=brand_names,
-            price=0.0,  # Price is not extracted from drugs.com
-            dosage=dosage_forms,
-            form="N/A",  # Form is not explicitly extracted
-            otc=False,  # Over-the-counter status is not extracted
-            description=f"Generic Name: {generic_name}, Drug Class: {drug_class}",
-            side_effects="N/A",  # Side effects are not extracted
-            category=drug_class,
+            name=name,
+            brand=brand,
+            price=0.0,  # Default price since not extracted
+            dosage=dosage,
+            form="Various",  # Default form
+            otc=False,  # Default to prescription required
+            description=f"Information extracted from drugs.com: {name} in category {category}",
+            side_effects="Please consult your healthcare provider for side effects information.",
+            category=category,
             date_added=today
         )
+        
+        # Log the created medicine object
+        logger.info(f"Created medicine object: {medicine.model_dump()}")
 
         # Add the medicine to the database
         add_medicine(medicine)
+        
+        # Automatically reload medicines list after adding to database
+        load_medicines()
+        
+        # Return the medicine for display
         return medicine
 
     return None
@@ -323,7 +336,7 @@ with tab1:
                 if result:
                     if extract_data and hasattr(result, "medicines") and result.medicines:
                         # Process structured medicine data
-                        medicine = result.medicines[0]
+                        medicine = result  
                         medicine_info = f"""
                         ### {medicine.name}
                         
@@ -369,8 +382,11 @@ with tab1:
                         if hasattr(result, "__iter__"):
                             # Try to extract narrative response from agent steps
                             for step in result:
-                                if hasattr(step, "action") and isinstance(step.action, dict) and "done" in step.action:
-                                    done_data = step.action.get("done", {})
+                                if isinstance(step, tuple) and len(step) > 1 and isinstance(step[1], dict) and "done" in step[1]:
+                                    if isinstance(step, dict) and "action" in step:
+                                        done_data = step["action"].get("done", {})
+                                    else:
+                                        done_data = {}
                                     if isinstance(done_data, dict) and done_data.get("success") and "text" in done_data:
                                         response = done_data["text"]
                                         break
@@ -497,48 +513,47 @@ with tab2:
                 result = asyncio.run(run_mcp_query(mcp_prompt))
                 
                 if result:
-                    # Extract response from result
-                    response = "I couldn't process your request."
-                    formatted_response = []
-                    
-                    if hasattr(result, "__iter__"):
-                        # Format the agent steps into a readable response
-                        for step in result:
-                            if isinstance(step, dict):
-                                action = step.get("action")
-                                if action and isinstance(action, dict) and "done" in action:
-                                    done_data = action.get("done", {})
-                                    if isinstance(done_data, dict) and done_data.get("success") and "text" in done_data:
-                                        response = done_data["text"]
-                                        formatted_response.append(response)
-                                
-                                observation = step.get("observation")
-                                if observation:
-                                    try:
-                                        obs_data = json.loads(observation)
-                                        if isinstance(obs_data, list) and len(obs_data) > 0:
-                                            df = pd.DataFrame(obs_data)
-                                            formatted_response.append("**Results:**")
-                                            formatted_response.append(df.to_markdown())
-                                        elif isinstance(obs_data, dict) and "affected_rows" in obs_data:
-                                            formatted_response.append(f"**Affected rows:** {obs_data['affected_rows']}")
-                                        else:
-                                            formatted_response.append(f"**Result:** {observation}")
-                                    except Exception as e:
-                                        formatted_response.append(f"**Error parsing observation:** {str(e)}")
-
-                                thought = step.get("thought")
-                                if thought:
-                                    formatted_response.append(f"**Analysis:** {thought}")
-                        
-                    if formatted_response:
-                        response = "\n\n".join(formatted_response)
-                    
-                    # Add assistant message
-                    st.session_state.mcp_messages.append({"role": "assistant", "content": response})
-                    
-                    # Update the thinking message with the result
-                    thinking.markdown(response)
+                    # Process the direct JSON response from the MCP server
+                    if "error" in result:
+                        # Handle error response
+                        error_message = result["error"]
+                        st.session_state.mcp_messages.append({"role": "assistant", "content": f"Error: {error_message}"})
+                        thinking.markdown(f"Error: {error_message}")
+                    elif "results" in result:
+                        # Handle successful read_query response
+                        results = result["results"]
+                        if results:
+                            # Convert results to DataFrame for better display
+                            # First, get column names from the database
+                            conn = sqlite3.connect('medicine.db')
+                            cursor = conn.cursor()
+                            cursor.execute(f"PRAGMA table_info(medicines)")
+                            columns = [info[1] for info in cursor.fetchall()]
+                            conn.close()
+                            
+                            # Create DataFrame with column names
+                            df = pd.DataFrame(results, columns=columns)
+                            
+                            # Format response
+                            response = "**Query Results:**\n\n"
+                            response += df.to_markdown()
+                            
+                            st.session_state.mcp_messages.append({"role": "assistant", "content": response})
+                            thinking.markdown(response)
+                        else:
+                            response = "Query executed successfully, but no results were returned."
+                            st.session_state.mcp_messages.append({"role": "assistant", "content": response})
+                            thinking.markdown(response)
+                    elif "message" in result:
+                        # Handle successful write_query response
+                        message = result["message"]
+                        st.session_state.mcp_messages.append({"role": "assistant", "content": message})
+                        thinking.markdown(message)
+                    else:
+                        # Fallback for unexpected response format
+                        response = f"Received response: {json.dumps(result, indent=2)}"
+                        st.session_state.mcp_messages.append({"role": "assistant", "content": response})
+                        thinking.markdown(response)
                 else:
                     error_message = "Sorry, I couldn't process your request."
                     st.session_state.mcp_messages.append({"role": "assistant", "content": error_message})
