@@ -1,0 +1,9 @@
+results.csv
+course_offerings.xlsx
+__pycache__/
+*.pyc
+.venv
+venv
+.vscode/
+debug.log
+.env

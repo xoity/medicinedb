@@ -1,0 +1,10 @@
+browser-use
+polars
+pandas
+openpyxl
+pydantic
+langchain
+langchain-google-genai
+python-dotenv
+playwright
+streamlit
