@@ -12,9 +12,12 @@ from pydantic import SecretStr
 import traceback
 import logging
 import io
+import requests
+import aiohttp
+
 
 from src.utils import initialize_database, add_medicine, get_all_medicines, export_to_csv
-from src.agent_runner import MedicineInfoAgent, SqliteMcpAgent
+from src.agent_runner import MedicineInfoAgent
 from src.models import Medicine  # Import the Medicine model
 
 # Configure logging
@@ -94,7 +97,6 @@ if "mcp_messages" not in st.session_state:
 # Function to check if Ollama is running
 def is_ollama_running():
     try:
-        import requests
         response = requests.get("http://localhost:11434/api/version", timeout=2)
         return response.status_code == 200
     except Exception:
@@ -155,13 +157,40 @@ async def search_medicine_info(medicine_name):
 
 # Function to run SQLite MCP query
 async def run_mcp_query(prompt):
-    llm = get_llm(st.session_state.model_choice)
-    if not llm:
-        return None
+    """Execute a query on the SQLite database through the MCP server API.
+
+    The function determines the appropriate endpoint based on the query type:
+    - Queries containing write operations (e.g., INSERT, UPDATE, DELETE, CREATE, ALTER, DROP) are sent to the write_query endpoint.
+    - All other queries are sent to the read_query endpoint.
+
+    If the prompt is not a valid SQL query, an error message will be returned.
+    """
+    # Default to read query endpoint since it's safer
+    endpoint = "http://127.0.0.1:8000/mcp/read_query"
     
-    agent = SqliteMcpAgent(llm=llm, prompt=prompt)
-    result = await agent.run()
-    return result
+    # Check if query is a write operation (INSERT, UPDATE, DELETE, etc.)
+    write_operations = ["INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP"]
+    if any(op in prompt.upper() for op in write_operations):
+        endpoint = "http://127.0.0.1:8000/mcp/write_query"
+    
+    try:
+        # Send request to MCP server
+        async with aiohttp.ClientSession() as session, session.post(
+            endpoint,
+            json={"query": prompt},
+            headers={"Content-Type": "application/json"}
+        ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    error_text = await response.text()
+                    return {"error": f"Error {response.status}: {error_text}"}
+    except aiohttp.ClientConnectorError:
+        return {
+            "error": "Cannot connect to MCP server. Please make sure it's running with: uvicorn mcp_server:app --reload"
+        }
+    except Exception as e:
+        return {"error": f"Error executing query: {str(e)}"}
 
 # Function to load medicines from database
 def load_medicines():
@@ -477,12 +506,11 @@ with tab2:
                         for step in result:
                             if isinstance(step, dict):
                                 action = step.get("action")
-                                if action and isinstance(action, dict):
-                                    if "done" in action:
-                                        done_data = action.get("done", {})
-                                        if isinstance(done_data, dict) and done_data.get("success") and "text" in done_data:
-                                            response = done_data["text"]
-                                            formatted_response.append(response)
+                                if action and isinstance(action, dict) and "done" in action:
+                                    done_data = action.get("done", {})
+                                    if isinstance(done_data, dict) and done_data.get("success") and "text" in done_data:
+                                        response = done_data["text"]
+                                        formatted_response.append(response)
                                 
                                 observation = step.get("observation")
                                 if observation:

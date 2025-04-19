@@ -1,10 +1,9 @@
-from browser_use import Agent
 import json
 import logging
 import traceback
+from browser_use import Agent
 
 logger = logging.getLogger(__name__)
-
 
 class MedicineInfoAgent:
     def __init__(self, llm, medicine_name: str):
@@ -68,35 +67,3 @@ class MedicineInfoAgent:
             logger.error(f"Error processing result: {str(e)}")
             logger.error(traceback.format_exc())
             return None
-
-
-class SqliteMcpAgent:
-    def __init__(self, llm, prompt):
-        self.llm = llm
-        self.prompt = prompt
-
-    async def run(self):
-        task = f"""
-        You are an expert in SQL and database analysis. Use the SQLite MCP to help with the following request:
-        
-        {self.prompt}
-        
-        Remember to:
-        1. Use read_query for SELECT queries to retrieve data
-        2. Use write_query for INSERT, UPDATE, or DELETE operations
-        3. Use create_table if you need to create a new table
-        4. Use list_tables to see what tables are available
-        5. Use describe_table to understand the schema of a table
-        6. Use append_insight to record important insights discovered
-        
-        Provide clear explanations before and after running queries, and summarize the findings in a helpful way.
-        """
-        
-        agent = Agent(
-            task=task,
-            llm=self.llm,
-            max_actions_per_step=5,
-        )
-        
-        result = await agent.run(max_steps=50)
-        return result

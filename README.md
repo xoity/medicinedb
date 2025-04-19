@@ -1,124 +1,159 @@
-# Schedule Finder
+# Medicine Information Assistant
 
-A tool to find and extract course offerings from the CUD Portal using browser automation.
+A comprehensive tool for managing medicine information with an intelligent search system and SQLite database integration.
+
+## Features
+
+- **Medicine Search & Database**: Search for detailed medicine information and automatically store it in a SQLite database
+- **SQLite MCP Server**: Execute SQL queries directly against your medicine database
+- **Dual LLM Support**: Choose between Google's Gemini API (cloud) or Ollama (local) for AI interactions
+- **Data Export**: Export your medicine database to CSV format for external use
 
 ## Prerequisites
 
 - Python 3.10+ (3.13 recommended)
-- Gemini API key (from Google AI Studio)
+- Gemini API key (optional, only for Gemini model)
+- Ollama installation (optional, for local LLM support)
 
 ## Installation
 
-### Linux
+### Setup Steps
 
-On Linux systems (particularly Arch-based distributions), you'll need to use a virtual environment due to the externally managed environment restrictions (PEP 668).
+1. Clone this repository
+2. Create a virtual environment:
 
 ```bash
 # Create a virtual environment
 python -m venv venv
 
 # Activate the virtual environment
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Playwright browsers
-playwright install
-
-### Windows
-
-On Windows, you can install packages directly:
-
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Playwright browsers
-playwright install
+source venv/bin/activate  # Linux/macOS
+# or
+venv\Scripts\activate     # Windows
 ```
 
-### macOS
+1. Install dependencies:
 
 ```bash
-# Create a virtual environment (recommended)
-python -m venv venv
-
-# Activate the virtual environment
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Install Playwright browsers
-playwright install
 ```
 
-## Setting up your API Key
+### Setting up your API Key (Optional)
+
+For Gemini model usage:
 
 1. Go to [Google AI Studio](https://aistudio.google.com/)
 2. Create a new API key
-3. Create a `.env` file in the project root with the following content:
+3. Create a `.env` file in the project root with your API key:
 
 ``` bash
 GEMINI_API_KEY=your_api_key_here
 ```
 
-## Usage
+### Setting up Ollama (Optional)
 
-### Command Line Interface
+For local LLM support:
 
-Run the command-line version:
+1. Install Ollama from [ollama.ai](https://ollama.ai)
+2. Pull the required model:
 
 ```bash
-python offerings_scraper.py
+ollama pull llama3
 ```
 
-Follow the prompts to enter your CUD Portal credentials and search criteria. The results will be saved to `results.csv` and `course_offerings.xlsx`.
+## Usage
 
-### Streamlit Web Interface (Recommended)
+### Start the MCP Server
 
-For a more user-friendly experience, run the Streamlit web application:
+Before starting the main application, start the FastAPI MCP server:
+
+```bash
+uvicorn mcp_server:app --reload
+```
+
+This starts the MCP server on <http://127.0.0.1:8000>, which handles SQL queries for the database.
+
+### Start the Streamlit Application
+
+In a new terminal (with your virtual environment activated):
 
 ```bash
 streamlit run app.py
 ```
 
-This will open a web browser with the Schedule Finder interface where you can:
+This will open a web browser with the Medicine Information Assistant interface.
 
-1. Log in with your CUD Portal credentials and Gemini API key
-2. Chat with the assistant to extract course data or search for specific information
-3. Browse, filter, and download course offerings data
-4. Search for courses by instructor, year, or course code
+## Application Tabs
 
-For example, you can:
+### 1. Medicine Search & Database
 
-- Ask "Extract all course offerings from the CUD portal" to scrape the data
-- Ask "Show me all courses taught by Dr. Said Elnaffar" to filter results
-- Ask "What courses are available for 2nd year students?" to get year-specific offerings
+This tab allows you to:
+
+- Search for medicine information using either Gemini or Ollama
+- View and add structured medicine data to your database
+- Filter medicines by category, OTC status, etc.
+- Export medicine data to CSV format
+
+**Example Searches:**
+
+- Ibuprofen
+- Lisinopril
+- Amoxicillin
+- Metformin
+
+### 2. SQLite MCP Server
+
+This tab enables direct interaction with your medicine database through SQL queries:
+
+- Execute SQL queries against your medicine database
+- View formatted results in the interface
+- Perform both read and write operations
+
+**Example SQL Queries:**
+
+```sql
+-- Basic queries
+SELECT * FROM medicines;
+SELECT name, price, dosage FROM medicines WHERE otc = 1;
+
+-- Advanced queries
+SELECT category, AVG(price) as avg_price FROM medicines GROUP BY category;
+INSERT INTO medicines (name, brand, price) VALUES ('Aspirin', 'Bayer', 5.99);
+```
+
+## API Access
+
+The MCP server also provides REST API endpoints that can be called directly:
+
+```bash
+# Execute a read query
+curl -X POST "http://127.0.0.1:8000/mcp/read_query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "SELECT * FROM medicines;"}'
+
+# Execute a write query
+curl -X POST "http://127.0.0.1:8000/mcp/write_query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "INSERT INTO medicines (name, brand, price) VALUES (\"Paracetamol\", \"Tylenol\", 4.99);"}'
+```
 
 ## Troubleshooting
 
-### Externally Managed Environment Error
+### MCP Server Connection Issues
 
-If you see this error on Linux:
+If you encounter errors connecting to the MCP server:
 
-``` plaintext
-error: externally-managed-environment
-```
-This means your Python installation is managed by the system package manager. Always use a virtual environment as described in the Linux installation instructions above.
+1. Ensure the MCP server is running with `uvicorn mcp_server:app --reload`
+2. Check that it's running on port 8000
+3. Verify there are no firewall or network issues blocking local connections
 
-### Browser Installation Issues
+### API Key Issues
 
-If you encounter issues with Playwright browser installation:
+If you see authentication errors with Gemini:
 
-```bash
-# Try running with admin privileges
-sudo playwright install
-
-# Or specify the browser
-playwright install chromium
-```
+1. Verify your API key is correct in the `.env` file
+2. Check that the API key is entered in the Settings section of the app
+3. Ensure your API key has the necessary permissions
 
 ## License
 
