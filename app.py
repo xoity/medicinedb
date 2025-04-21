@@ -20,6 +20,7 @@ import aiohttp
 from src.utils import initialize_database, add_medicine, get_all_medicines, export_to_csv
 from src.agent_runner import MedicineInfoAgent
 from src.models import Medicine  # Import the Medicine model
+from src.export_to_prolog import export_to_prolog  # Import the Prolog export function
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -274,6 +275,22 @@ with st.sidebar:
                     )
             else:
                 st.warning("No data to export.")
+        
+        if st.button("Export to Prolog"):
+            try:
+                output_file = os.path.join(os.getcwd(), "medicines.pl")
+                export_to_prolog("medicine.db", output_file)
+                st.success(f"Exported medicine data to Prolog file: medicines.pl")
+                with open(output_file, "r") as f:
+                    prolog_content = f.read()
+                    st.download_button(
+                        label="Download Prolog File",
+                        data=prolog_content,
+                        file_name="medicines.pl",
+                        mime="text/plain"
+                    )
+            except Exception as e:
+                st.error(f"Error exporting to Prolog: {e}")
 
 # Main content
 # Create tabs for different functionalities
